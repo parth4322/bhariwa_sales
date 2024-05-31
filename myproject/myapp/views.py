@@ -8,7 +8,7 @@ from django.http import HttpResponse
 
 # myapp/views.py
 from django.http import JsonResponse
-from .utils import fetch_data, train_models, forecast,compare_forecasts,check_stationarity,check_seasonality,get_data_prev_month
+from .utils import fetch_data, train_models, forecast,compare_forecasts,check_stationarity,check_seasonality
 
 @api_view(['GET'])
 def plot_sales_qty(request, item_code):
@@ -78,7 +78,7 @@ def forecast_sales_qty(request):
 
     data = fetch_data(item_code)
     #print('data-->> ',data)
-    prevSale = get_data_prev_month(item_code,from_date,to_date,data)
+    # prevSale = get_data_prev_month(item_code,from_date,to_date,data)
     #plot_sales_data(data)
     check_stationarity(data)
     models = train_models(data)
