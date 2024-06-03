@@ -7,6 +7,8 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from datetime import datetime
 from django.db import connection
 import logging
+import numpy as np
+from scipy.stats import boxcox
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -25,7 +27,7 @@ def fetch_data(item_code):
         JOIN
             TRNMAIN tmain ON tmain.vchrno = tpro.vchrno
         WHERE
-            tpro.MCODE = %s
+            tpro.MCODE = %s and tpro.quantity >= 0
         GROUP BY
             tmain.trndate,tpro.MCODE
         ORDER BY
@@ -49,17 +51,18 @@ def fetch_data(item_code):
     df = df[(df['date'].dt.year < current_year) | 
             
             ((df['date'].dt.year == current_year) & (df['date'].dt.month <= cutoff_month))]
-    print(df)
+    #print(df)
     return df
 
-def check_stationarity(data):
-    result = adfuller(data['sales_qty'])
+def check_stationarity(data,column='sales_qty'):
+    result = adfuller(data[column].dropna())
     print('ADF Statistic:', result[0])
     print('p-value:', result[1])
     for key, value in result[4].items():
         print('Critical Values:')
         print(f'   {key}, {value}')
-
+    return result[1] < .05    
+        
 def check_seasonality(data, period=365):
     decomposition = seasonal_decompose(data['sales_qty'], model='additive', period=period)
     seasonal = decomposition.seasonal
@@ -68,12 +71,56 @@ def check_seasonality(data, period=365):
     # Quantifying seasonality strength
     seasonal_strength = (seasonal.var() / (seasonal.var() + decomposition.resid.var()))
     
-    return seasonal, autocorr, seasonal_strength
+    print("seasonal,autocorr,seasonal_strength",seasonal, autocorr, seasonal_strength)
+    return seasonal_strength > 0.7
 
+
+def preprocess_data(data):
+    print("in preprocess_data")
+    data.set_index('date', inplace=True)
+    data = data.asfreq('D').fillna(0)
+    print("data-----", data)
+
+    # Initial check for stationarity
+    if not check_stationarity(data):
+        # First differencing
+        data['sales_qty_diff'] = data['sales_qty'].diff()
+        if not check_stationarity(data, 'sales_qty_diff'):
+            # Log transformation
+            data['sales_qty_log'] = np.log(data['sales_qty'] + 1)
+            if not check_stationarity(data, 'sales_qty_log'):
+                # Log differencing
+                data['sales_qty_log_diff'] = data['sales_qty_log'].diff()
+                if not check_stationarity(data, 'sales_qty_log_diff'):
+                    # Box-Cox transformation
+                    data['sales_qty_boxcox'], _ = boxcox(data['sales_qty'] + 1)
+                    if not check_stationarity(data, 'sales_qty_boxcox'):
+                        # Box-Cox differencing
+                        data['sales_qty_boxcox_diff'] = pd.Series(data['sales_qty_boxcox']).diff()
+                        if not check_stationarity(data, 'sales_qty_boxcox_diff'):
+                            return None, "Data is not stationary after multiple preprocessing steps"
+                        else:
+                            data['sales_qty'] = data['sales_qty_boxcox_diff']
+                    else:
+                        data['sales_qty'] = data['sales_qty_boxcox']
+                else:
+                    data['sales_qty'] = data['sales_qty_log_diff']
+            else:
+                data['sales_qty'] = data['sales_qty_log']
+        else:
+            data['sales_qty'] = data['sales_qty_diff']
+    
+    data = data.dropna(subset=['sales_qty'])  # Drop NaNs that may have been introduced by differencing
+    print("data[['sales_qty']]------", data[['sales_qty']])
+    return data[['sales_qty']], None
 def train_models(data):
     results = {}
 
+    # complete_df, error_message = preprocess_data(data)
+    # if error_message:
+    #     return None, error_message
     complete_df = data[['date', 'sales_qty']].copy()
+
     complete_df.set_index('date', inplace=True)
     complete_df = complete_df.asfreq('D')
     print(len(data))
@@ -89,6 +136,8 @@ def train_models(data):
     return results
 
 def get_data_prev_month(from_date,to_date,data):
+    print(from_date[4:])
+
     starting_year = data['date'].iloc[0].year
     end_year = data['date'].iloc[-1].year
     
@@ -99,6 +148,7 @@ def get_data_prev_month(from_date,to_date,data):
         newToDate = str(starting_year) + to_date[4:]
         newData = data.loc[(data['date'] >= newFromDate) & (data['date'] <= newToDate)]
         yearly_data.append(newData['sales_qty'].sum())
+        # yearly_data.append(newData['sales_qty'])
         starting_year+=1
     print(yearly_data)
         
@@ -152,5 +202,5 @@ def compare_forecasts(item_code, models, from_date, to_date, no_of_days):
     return comparison
 
 
-def get_prev_data(data,from_date,to_date):
-    data = data.loc[()]
+# def get_prev_data(data,from_date,to_date):
+#     data = data.loc[()]

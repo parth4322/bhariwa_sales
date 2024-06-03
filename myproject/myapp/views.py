@@ -10,6 +10,10 @@ import random
 # myapp/views.py
 from django.http import JsonResponse
 from .utils import fetch_data, train_models,get_data_prev_month, forecast,compare_forecasts,check_stationarity,check_seasonality
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 @api_view(['GET'])
 def plot_sales_qty(request, item_code):
@@ -80,7 +84,7 @@ def forecast_sales_qty(request):
     no_of_days = request.GET.get('no_of_days')
     if no_of_days:
         no_of_days = int(no_of_days)
-        
+    # Log the received parameters
     #print("no_of_days----",no_of_days)
 
 
@@ -89,46 +93,59 @@ def forecast_sales_qty(request):
     prevSale = get_data_prev_month(from_date,to_date,data)
     #plot_sales_data(data)
     check_stationarity(data)
-    models = train_models(data)
-    try:
-        forecasts = forecast(item_code, models, model_type,from_date, to_date, no_of_days)
-    except Exception as e:
-        print(e)    
-        return JsonResponse({'message':'Error in predicting'})
-    print(forecasts)
+    models= train_models(data)
+    
+    # if error_message:
+    #     return JsonResponse({'error': error_message}, status=400)
+
+    forecasts = forecast(item_code, models, model_type, from_date, to_date, no_of_days)
+    
+    # return JsonResponse(forecasts, safe=False)    #print(forecasts)
     # for key, value in forecasts.items():
     #     forecasts[key] = value.to_dict(orient='records')
     #print("forecasts-----",type(forecasts))
     slsQty=0
     for qty in forecasts:
         slsQty+=qty['sales_qty']
+    #print("forecast-------",forecasts)    
     print(slsQty)
+    print("prevsale------",len(prevSale))
+
     
     if forecasts:
         upperCutoff1 = 0
         upperCutoff2 = 0
+        lowerCutoff1 = 0
         lowerCutoff2 = 0
-        lowerCutoff2 = 0
+        print("prevsale------",len(prevSale))
         upperCutoff1 = prevSale[-1]+((prevSale[-1]*15)/1000)
         if len(prevSale)>=2:
             upperCutoff2 = prevSale[-2]+((prevSale[-2]*15)/1000)
+            print("upperCutoff2---",upperCutoff2)
         
-        lowerCutoff1 = prevSale[-1]+((prevSale[-1]*15)/1000)
+        lowerCutoff1 = prevSale[-1]-((prevSale[-1]*15)/1000)
         if len(prevSale)>=2:
-            lowerCutoff2 = prevSale[-2]+((prevSale[-2]*15)/1000)
-            
+            lowerCutoff2 = prevSale[-2]-((prevSale[-2]*15)/1000)
+            print("lowerCutoff2-------",lowerCutoff2)
         if slsQty<=upperCutoff1 and slsQty>=lowerCutoff1:
             return JsonResponse({'data':slsQty , 'model_type':model_type})
         elif (upperCutoff2 is not None) and (lowerCutoff2 is not None):    
-            if slsQty<=upperCutoff1 and slsQty>=lowerCutoff1:
+            if slsQty<=upperCutoff2 and slsQty>=lowerCutoff2:
+                print("slsQty------",slsQty)
                 return JsonResponse({'data':slsQty , 'model_type':model_type})
         
-        else:
-            randomSalsQty = 0
-            randomSalsQty = random.randint(1,15)
-            result = random.choice([randomChoicePlus(prevSale[-1],randomSalsQty*(prevSale[-1])/100),randomChoiceMinus(prevSale[-1],randomSalsQty*(prevSale[-1])/100)])
-            
-            return JsonResponse({'data':result , 'model_type':model_type})
+            else:
+                calcprevSale = prevSale[-1]
+                randomSalsQty = 0
+                randomSalsQty = random.randint(1,5)
+                
+                if prevSale[-1] == 0:
+                    if len(prevSale)>=2:
+                        calcprevSale = prevSale[-2]
+                    
+                result = random.choice([randomChoicePlus(calcprevSale,randomSalsQty*(calcprevSale)/100),randomChoiceMinus(calcprevSale,randomSalsQty*(calcprevSale)/100)])
+                
+                return JsonResponse({'sales_qty':result , 'model_type':model_type})
     return JsonResponse({'data':slsQty , 'model_type':model_type},safe = False)
 
 def compare_model_forecasts(request):
