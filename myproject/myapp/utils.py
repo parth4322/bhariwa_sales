@@ -25,11 +25,11 @@ def fetch_data(item_code):
         JOIN
             TRNMAIN tmain ON tmain.vchrno = tpro.vchrno
         WHERE
-            tpro.MCODE = %s  
+            tpro.MCODE = %s
         GROUP BY
-            tmain.trndate, tpro.MCODE
+            tmain.trndate,tpro.MCODE
         ORDER BY
-            tmain.trndate
+            tmain.trndate;
         """
         cursor.execute(query, [item_code])
         rows = cursor.fetchall()
@@ -75,7 +75,8 @@ def train_models(data):
 
     complete_df = data[['date', 'sales_qty']].copy()
     complete_df.set_index('date', inplace=True)
-
+    complete_df = complete_df.asfreq('D')
+    print(len(data))
     # Train Exponential Smoothing model
     exponential_smoothing = ExponentialSmoothing(complete_df['sales_qty'], seasonal='additive', seasonal_periods=30).fit()
 
@@ -86,6 +87,22 @@ def train_models(data):
     results['sarimax'] = sarimax_model
 
     return results
+
+def get_data_prev_month(from_date,to_date,data):
+    starting_year = data['date'].iloc[0].year
+    end_year = data['date'].iloc[-1].year
+    
+    print(starting_year,end_year,'years-----')
+    yearly_data = []
+    while end_year>=starting_year:
+        newFromDate = str(starting_year) + from_date[4:]
+        newToDate = str(starting_year) + to_date[4:]
+        newData = data.loc[(data['date'] >= newFromDate) & (data['date'] <= newToDate)]
+        yearly_data.append(newData['sales_qty'].sum())
+        starting_year+=1
+    print(yearly_data)
+        
+    return yearly_data
 
 def forecast(item_code, models, model_type, from_date, to_date, no_of_days):
     if isinstance(from_date, str):
@@ -133,3 +150,7 @@ def compare_forecasts(item_code, models, from_date, to_date, no_of_days):
     }
 
     return comparison
+
+
+def get_prev_data(data,from_date,to_date):
+    data = data.loc[()]
