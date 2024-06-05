@@ -45,7 +45,7 @@ def fetch_data(item_code):
     df = df.resample('D').sum().fillna(0).reset_index()
 
     current_year = datetime.now().year
-    cutoff_month = 4
+    cutoff_month = 5
 
     # Filter out data for the current year beyond April
     df = df[(df['date'].dt.year < current_year) | 
@@ -141,6 +141,11 @@ def get_data_prev_month(from_date,to_date,data):
     starting_year = data['date'].iloc[0].year
     end_year = data['date'].iloc[-1].year
     
+    from_month = from_date[5:7]
+    to_month = to_date[5:7]
+    
+    print(from_month,to_month,"------from_month,to_month")
+    
     print(starting_year,end_year,'years-----')
     yearly_data = []
     while end_year>=starting_year:
@@ -168,34 +173,47 @@ def forecast(item_code, models, model_type, from_date, to_date, no_of_days):
     if model_type == 'exponential_smoothing':
         exp_sm_forecast = exponential_smoothing_model.forecast(steps=no_of_days)
         exp_sm_forecast_df = pd.DataFrame({'date': future_dates, 'sales_qty': exp_sm_forecast})
+        # exp_sm_forecast_sum = exp_sm_forecast_df['sales_qty'].sum()
+        # exp_sm_per_day = exp_sm_forecast_sum / no_of_days
         # print(exp_sm_forecast_df.to_dict(orient='records'))
-
+        #exp_sm_forecast_mean = exp_sm_forecast_df['sales_qty'].mean()
         return exp_sm_forecast_df.to_dict(orient='records')
         # exp_sm_forecast_mean = exp_sm_forecast_df['sales_qty'].mean()
         # return {'forecasted_sales_qty_by_exponential_smoothing': exp_sm_forecast_mean}
+        # return exp_sm_forecast_sum,exp_sm_per_day
     
     if model_type == 'sarimax':
         sarimax_forecast = sarimax_model.get_forecast(steps=no_of_days)
         sarimax_forecast_df = sarimax_forecast.summary_frame()
         sarimax_forecast_df['date'] = future_dates
         sarimax_forecast_df = sarimax_forecast_df[['date', 'mean']].rename(columns={'mean': 'sales_qty'})
+        #sarimax_mean = sarimax_forecast_df['sales_qty'].mean()
+        # sarimax_forecast_sum = sarimax_forecast_df['sales_qty'].sum()
+        # sarimax_per_day = sarimax_forecast_sum / no_of_days
+
         # print(sarimax_forecast_df.to_dict(orient='records'))
         return sarimax_forecast_df.to_dict(orient='records')
         # sarimax_mean = sarimax_forecast_df['mean'].mean()
         # return {'forecasted_sales_qty_by_sarimax': sarimax_mean}
+        # return sarimax_forecast_sum,sarimax_per_day
 
     return {}
 
 def compare_forecasts(item_code, models, from_date, to_date, no_of_days):
     exp_sm_forecast = forecast(item_code, models, 'exponential_smoothing', from_date, to_date, no_of_days)
     sarimax_forecast = forecast(item_code, models, 'sarimax', from_date, to_date, no_of_days)
+    
+    exp_sm_forecast_df = pd.DataFrame(exp_sm_forecast)
+    sarimax_forecast_df = pd.DataFrame(sarimax_forecast)
 
     comparison = {
         'exponential_smoothing': {
-            'sales_qty': exp_sm_forecast,
+            'sales_qty': exp_sm_forecast_df['sales_qty'].sum(),
+            'per_day_sale' : (exp_sm_forecast_df['sales_qty'].sum())/no_of_days
         },
         'sarimax': {
-            'sales_qty': sarimax_forecast,
+            'sales_qty': sarimax_forecast_df['sales_qty'].sum(),
+            'per_day_sale' : (sarimax_forecast_df['sales_qty'].sum())/no_of_days
         }
     }
 

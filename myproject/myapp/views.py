@@ -118,35 +118,80 @@ def forecast_sales_qty(request):
         lowerCutoff1 = 0
         lowerCutoff2 = 0
         print("prevsale------",len(prevSale))
-        upperCutoff1 = prevSale[-1]+((prevSale[-1]*15)/1000)
+        upperCutoff1 = prevSale[-1]+((prevSale[-1]*5)/1000)
+        print("upperCutoff1--------",upperCutoff1)
         if len(prevSale)>=2:
-            upperCutoff2 = prevSale[-2]+((prevSale[-2]*15)/1000)
+            upperCutoff2 = prevSale[-2]+((prevSale[-2]*5)/1000)
             print("upperCutoff2---",upperCutoff2)
         
-        lowerCutoff1 = prevSale[-1]-((prevSale[-1]*15)/1000)
+        lowerCutoff1 = prevSale[-1]-((prevSale[-1]*5)/1000)
+        print("lowerCutoff1-------",lowerCutoff1)
         if len(prevSale)>=2:
-            lowerCutoff2 = prevSale[-2]-((prevSale[-2]*15)/1000)
+            lowerCutoff2 = prevSale[-2]-((prevSale[-2]*5)/1000)
             print("lowerCutoff2-------",lowerCutoff2)
-        if slsQty<=upperCutoff1 and slsQty>=lowerCutoff1:
-            return JsonResponse({'data':slsQty , 'model_type':model_type})
-        elif (upperCutoff2 is not None) and (lowerCutoff2 is not None):    
-            if slsQty<=upperCutoff2 and slsQty>=lowerCutoff2:
-                print("slsQty------",slsQty)
-                return JsonResponse({'data':slsQty , 'model_type':model_type})
+            
+    #     if slsQty<=upperCutoff1 and slsQty>=lowerCutoff1:
+    #         return JsonResponse({'data':slsQty , 'model_type':model_type})
+    #     elif (upperCutoff2 is not None) and (lowerCutoff2 is not None):    
+    #         if slsQty<=upperCutoff2 and slsQty>=lowerCutoff2:
+    #             print("slsQty------",slsQty)
+    #             return JsonResponse({'data':slsQty , 'model_type':model_type})
         
-            else:
-                calcprevSale = prevSale[-1]
-                randomSalsQty = 0
-                randomSalsQty = random.randint(1,5)
+    #         else:
+    #             calcprevSale = prevSale[-1]
+    #             randomSalsQty = 0
+    #             randomSalsQty = random.randint(1,5)
                 
-                if prevSale[-1] == 0:
-                    if len(prevSale)>=2:
-                        calcprevSale = prevSale[-2]
+    #             if prevSale[-1] == 0:
+    #                 if len(prevSale)>=2:
+    #                     calcprevSale = prevSale[-2]
                     
-                result = random.choice([randomChoicePlus(calcprevSale,randomSalsQty*(calcprevSale)/100),randomChoiceMinus(calcprevSale,randomSalsQty*(calcprevSale)/100)])
+    #             result = random.choice([randomChoicePlus(calcprevSale,randomSalsQty*(calcprevSale)/100),randomChoiceMinus(calcprevSale,randomSalsQty*(calcprevSale)/100)])
                 
-                return JsonResponse({'sales_qty':result , 'model_type':model_type})
-    return JsonResponse({'data':slsQty , 'model_type':model_type},safe = False)
+    #             return JsonResponse({'sales_qty':result , 'model_type':model_type})
+    # return JsonResponse({'data':slsQty , 'model_type':model_type},safe = False)    
+            
+        if  prevSale[-1] > prevSale[-2]:  
+            if slsQty<=upperCutoff1 and slsQty>=lowerCutoff1:
+                return JsonResponse({'data':upperCutoff1 , 'model_type':model_type})
+            elif (upperCutoff2 is not None) and (lowerCutoff2 is not None):    
+                if slsQty<=upperCutoff2 and slsQty>=lowerCutoff2:
+                    print("slsQty------",slsQty)
+                    return JsonResponse({'data':upperCutoff2 , 'model_type':model_type})
+            
+                else:
+                    calcprevSale = prevSale[-1]
+                    randomSalsQty = 0
+                    randomSalsQty = random.randint(1,5)
+                    
+                    if prevSale[-1] == 0:
+                        if len(prevSale)>=2:
+                            calcprevSale = prevSale[-2]
+                        
+                    result = random.choice([randomChoicePlus(calcprevSale,randomSalsQty*(calcprevSale)/100),randomChoiceMinus(calcprevSale,randomSalsQty*(calcprevSale)/100)])
+                    
+                    return JsonResponse({'sales_qty':result , 'model_type':model_type})
+        else:
+            if slsQty<=upperCutoff1 and slsQty>=lowerCutoff1:
+                return JsonResponse({'data':slsQty , 'model_type':model_type})
+            elif (upperCutoff2 is not None) and (lowerCutoff2 is not None):    
+                if slsQty<=upperCutoff2 and slsQty>=lowerCutoff2:
+                    print("slsQty------",slsQty)
+                    return JsonResponse({'data':slsQty , 'model_type':model_type})
+            
+                else:
+                    calcprevSale = prevSale[-1]
+                    randomSalsQty = 0
+                    randomSalsQty = random.randint(1,5)
+                    
+                    if prevSale[-1] == 0:
+                        if len(prevSale)>=2:
+                            calcprevSale = prevSale[-2]
+                        
+                    result = random.choice([randomChoicePlus(calcprevSale,randomSalsQty*(calcprevSale)/100),randomChoiceMinus(calcprevSale,randomSalsQty*(calcprevSale)/100)])
+                    
+                    return JsonResponse({'sales_qty':result , 'model_type':model_type})
+    return JsonResponse({'data':slsQty , 'model_type':model_type},safe = False)        
 
 def compare_model_forecasts(request):
     item_code = str(request.GET.get('item_code'))
@@ -163,6 +208,7 @@ def compare_model_forecasts(request):
     models = train_models(data)    
         
     comparisons = compare_forecasts(item_code, models, from_date, to_date, no_of_days) 
+    
     return JsonResponse(comparisons,safe = False)
     
         
