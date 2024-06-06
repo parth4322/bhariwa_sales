@@ -1,21 +1,16 @@
 import pandas as pd
-from prophet import Prophet
-from statsmodels.tsa.statespace.sarimax import SARIMAX
-from statsmodels.tsa.stattools import adfuller, acf, pacf
-from statsmodels.tsa.seasonal import seasonal_decompose
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
-from datetime import datetime
-from django.db import connection
-import logging
 import numpy as np
-from scipy.stats import boxcox
+from django.db import connection
+from datetime import datetime
+import matplotlib.pyplot as plt
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import traceback
+from statsmodels.tsa.arima.model import ARIMA
 
-logging.basicConfig(level=logging.DEBUG)
-
-def get_database_connection():
-    return connection
 
 def fetch_data(item_code):
+    print("item_code---",item_code)
     with connection.cursor() as cursor:
         query = """
         SELECT
@@ -33,192 +28,133 @@ def fetch_data(item_code):
         ORDER BY
             tmain.trndate;
         """
-        cursor.execute(query, [item_code])
-        rows = cursor.fetchall()
+        try:
+            cursor.execute(query, [item_code])
+            rows = cursor.fetchall()
+            print(rows)
+        except Exception as e:
+            print(e)    
+    if not rows:
+        print("No data fetched from database.")
+        return pd.DataFrame(columns=['date', 'item_code', 'sales_qty'])    
 
     df = pd.DataFrame(rows, columns=['date', 'item_code', 'sales_qty'])
+    # print("Initial fetched data:")
+    # print(df.head())
+
     df['date'] = pd.to_datetime(df['date'])
+    
     df['sales_qty'] = df['sales_qty'].astype(float)
 
-    # Resample to daily frequency and fill missing days with 0 sales
+    # Resample to monthly frequency and fill missing months with 0 sales
     df.set_index('date', inplace=True)
-    df = df.resample('D').sum().fillna(0).reset_index()
+    df = df.resample('ME').sum().reset_index()
+    print(df)
 
     current_year = datetime.now().year
     cutoff_month = 5
 
     # Filter out data for the current year beyond April
     df = df[(df['date'].dt.year < current_year) | 
-            
             ((df['date'].dt.year == current_year) & (df['date'].dt.month <= cutoff_month))]
-    #print(df)
+    print(df.shape)
+    
+    # if 'item_code' in df.columns:
+    #         df.drop(columns=['item_code'], inplace=True)
+    #     # Check DataFrame contents
+        
+    # print("Data types:")
+    # print(df.dtypes)
+        
+    # df.set_index('date', inplace=True)
+    df.fillna(0, inplace=True)
     return df
 
-def check_stationarity(data,column='sales_qty'):
-    result = adfuller(data[column].dropna())
-    print('ADF Statistic:', result[0])
-    print('p-value:', result[1])
-    for key, value in result[4].items():
-        print('Critical Values:')
-        print(f'   {key}, {value}')
-    return result[1] < .05    
+
+def fit_models(df):
+    try:
+        print(df.dtypes)   
+        if 'item_code' in df.columns:
+            df.drop(columns=['item_code'], inplace=True)
         
-def check_seasonality(data, period=365):
-    decomposition = seasonal_decompose(data['sales_qty'], model='additive', period=period)
-    seasonal = decomposition.seasonal
-    autocorr = acf(data['sales_qty'], nlags=period*2)
-    
-    # Quantifying seasonality strength
-    seasonal_strength = (seasonal.var() / (seasonal.var() + decomposition.resid.var()))
-    
-    print("seasonal,autocorr,seasonal_strength",seasonal, autocorr, seasonal_strength)
-    return seasonal_strength > 0.7
-
-
-def preprocess_data(data):
-    print("in preprocess_data")
-    data.set_index('date', inplace=True)
-    data = data.asfreq('D').fillna(0)
-    print("data-----", data)
-
-    # Initial check for stationarity
-    if not check_stationarity(data):
-        # First differencing
-        data['sales_qty_diff'] = data['sales_qty'].diff()
-        if not check_stationarity(data, 'sales_qty_diff'):
-            # Log transformation
-            data['sales_qty_log'] = np.log(data['sales_qty'] + 1)
-            if not check_stationarity(data, 'sales_qty_log'):
-                # Log differencing
-                data['sales_qty_log_diff'] = data['sales_qty_log'].diff()
-                if not check_stationarity(data, 'sales_qty_log_diff'):
-                    # Box-Cox transformation
-                    data['sales_qty_boxcox'], _ = boxcox(data['sales_qty'] + 1)
-                    if not check_stationarity(data, 'sales_qty_boxcox'):
-                        # Box-Cox differencing
-                        data['sales_qty_boxcox_diff'] = pd.Series(data['sales_qty_boxcox']).diff()
-                        if not check_stationarity(data, 'sales_qty_boxcox_diff'):
-                            return None, "Data is not stationary after multiple preprocessing steps"
-                        else:
-                            data['sales_qty'] = data['sales_qty_boxcox_diff']
-                    else:
-                        data['sales_qty'] = data['sales_qty_boxcox']
-                else:
-                    data['sales_qty'] = data['sales_qty_log_diff']
-            else:
-                data['sales_qty'] = data['sales_qty_log']
-        else:
-            data['sales_qty'] = data['sales_qty_diff']
-    
-    data = data.dropna(subset=['sales_qty'])  # Drop NaNs that may have been introduced by differencing
-    print("data[['sales_qty']]------", data[['sales_qty']])
-    return data[['sales_qty']], None
-def train_models(data):
-    results = {}
-
-    # complete_df, error_message = preprocess_data(data)
-    # if error_message:
-    #     return None, error_message
-    complete_df = data[['date', 'sales_qty']].copy()
-
-    complete_df.set_index('date', inplace=True)
-    complete_df = complete_df.asfreq('D')
-    print(len(data))
-    # Train Exponential Smoothing model
-    exponential_smoothing = ExponentialSmoothing(complete_df['sales_qty'], seasonal='additive', seasonal_periods=30).fit()
-
-    # Train SARIMAX model
-    sarimax_model = SARIMAX(complete_df['sales_qty'], order=(1, 1, 1), seasonal_order=(1, 1, 1, 30)).fit(disp=False)
-
-    results['exponential_smoothing'] = exponential_smoothing
-    results['sarimax'] = sarimax_model
-
-    return results
-
-def get_data_prev_month(from_date,to_date,data):
-    print(from_date[4:])
-
-    starting_year = data['date'].iloc[0].year
-    end_year = data['date'].iloc[-1].year
-    
-    from_month = from_date[5:7]
-    to_month = to_date[5:7]
-    
-    print(from_month,to_month,"------from_month,to_month")
-    
-    print(starting_year,end_year,'years-----')
-    yearly_data = []
-    while end_year>=starting_year:
-        newFromDate = str(starting_year) + from_date[4:]
-        newToDate = str(starting_year) + to_date[4:]
-        newData = data.loc[(data['date'] >= newFromDate) & (data['date'] <= newToDate)]
-        yearly_data.append(newData['sales_qty'].sum())
-        # yearly_data.append(newData['sales_qty'])
-        starting_year+=1
-    print(yearly_data)
+        df['sales_diff'] = df['sales_qty'].diff().dropna()
         
-    return yearly_data
+        df.set_index('date', inplace=True)
+        
+        print("df in fit models---",df)
 
-def forecast(item_code, models, model_type, from_date, to_date, no_of_days):
-    if isinstance(from_date, str):
-        from_date = datetime.strptime(from_date, "%Y-%m-%d")
-    if isinstance(to_date, str):
-        to_date = datetime.strptime(to_date, "%Y-%m-%d")
+  
 
-    exponential_smoothing_model = models['exponential_smoothing']
-    sarimax_model = models['sarimax']
 
-    future_dates = pd.date_range(start=from_date, periods=no_of_days, freq='D')
+        
+        # Fit SARIMAX model
+        sarimax_model = SARIMAX(df['sales_diff'], order=(1, 1, 1), seasonal_order=(1, 1, 1, 12),freq = 'M')
+        sarimax_results = sarimax_model.fit()
 
-    if model_type == 'exponential_smoothing':
-        exp_sm_forecast = exponential_smoothing_model.forecast(steps=no_of_days)
-        exp_sm_forecast_df = pd.DataFrame({'date': future_dates, 'sales_qty': exp_sm_forecast})
-        # exp_sm_forecast_sum = exp_sm_forecast_df['sales_qty'].sum()
-        # exp_sm_per_day = exp_sm_forecast_sum / no_of_days
-        # print(exp_sm_forecast_df.to_dict(orient='records'))
-        #exp_sm_forecast_mean = exp_sm_forecast_df['sales_qty'].mean()
-        return exp_sm_forecast_df.to_dict(orient='records')
-        # exp_sm_forecast_mean = exp_sm_forecast_df['sales_qty'].mean()
-        # return {'forecasted_sales_qty_by_exponential_smoothing': exp_sm_forecast_mean}
-        # return exp_sm_forecast_sum,exp_sm_per_day
+        # Fit Exponential Smoothing model
+        # exp_smoothing_model = ExponentialSmoothing(df['sales_diff'], trend='add', seasonal = None)
+        # exp_smoothing_results = exp_smoothing_model.fit()
+        
+        # Fit ARIMA model
+        arima_model = ARIMA(df['sales_diff'], order=(1, 1, 1))
+        arima_results = arima_model.fit()
+
+        return sarimax_results,arima_results
     
-    if model_type == 'sarimax':
-        sarimax_forecast = sarimax_model.get_forecast(steps=no_of_days)
-        sarimax_forecast_df = sarimax_forecast.summary_frame()
-        sarimax_forecast_df['date'] = future_dates
-        sarimax_forecast_df = sarimax_forecast_df[['date', 'mean']].rename(columns={'mean': 'sales_qty'})
-        #sarimax_mean = sarimax_forecast_df['sales_qty'].mean()
-        # sarimax_forecast_sum = sarimax_forecast_df['sales_qty'].sum()
-        # sarimax_per_day = sarimax_forecast_sum / no_of_days
+    except Exception as e:
+        print("Error fitting models:", e)
+        traceback.print_exc()  # Print full traceback
+        return None, None
+def generate_forecasts(df,sarimax_results, arima_results, periods=12):
+# def generate_forecasts(df,sarimax_results,periods=12):
+    # Generate forecasts
+    sarimax_forecast = sarimax_results.get_forecast(steps=periods)
+    arima_forecast = arima_results.get_forecast(steps=periods)
 
-        # print(sarimax_forecast_df.to_dict(orient='records'))
-        return sarimax_forecast_df.to_dict(orient='records')
-        # sarimax_mean = sarimax_forecast_df['mean'].mean()
-        # return {'forecasted_sales_qty_by_sarimax': sarimax_mean}
-        # return sarimax_forecast_sum,sarimax_per_day
+    # exp_smoothing_forecast = exp_smoothing_results.forecast(steps=periods)
 
-    return {}
+    # Convert forecasts to DataFrame
+    sarimax_forecast_df = sarimax_forecast.conf_int()
+    sarimax_forecast_df['predicted_mean'] = sarimax_forecast.predicted_mean
 
-def compare_forecasts(item_code, models, from_date, to_date, no_of_days):
-    exp_sm_forecast = forecast(item_code, models, 'exponential_smoothing', from_date, to_date, no_of_days)
-    sarimax_forecast = forecast(item_code, models, 'sarimax', from_date, to_date, no_of_days)
+    forecast_index = pd.date_range(start=df.index[-1] + pd.DateOffset(months=1), periods=periods, freq='M')
+    sarimax_forecast_df.index = forecast_index
+    arima_forecast_index = pd.date_range(start=df.index[-1] + pd.DateOffset(months=1), periods=periods, freq='M')
+    arima_forecast = pd.Series(arima_forecast.predicted_mean, index=arima_forecast_index)
+
+
+    # exp_smoothing_forecast.index = forecast_index
+
+    return sarimax_forecast_df, arima_forecast
+    # return sarimax_forecast_df
+
+
+def plot_forecasts(df, sarimax_forecast_df, arima_forecast  ):
     
-    exp_sm_forecast_df = pd.DataFrame(exp_sm_forecast)
-    sarimax_forecast_df = pd.DataFrame(sarimax_forecast)
+    # Ensure 'date' column is present
+    if df.index.name == 'date':
+        df.reset_index(inplace=True)
+# def plot_forecasts(df, sarimax_forecast_df):  
 
-    comparison = {
-        'exponential_smoothing': {
-            'sales_qty': exp_sm_forecast_df['sales_qty'].sum(),
-            'per_day_sale' : (exp_sm_forecast_df['sales_qty'].sum())/no_of_days
-        },
-        'sarimax': {
-            'sales_qty': sarimax_forecast_df['sales_qty'].sum(),
-            'per_day_sale' : (sarimax_forecast_df['sales_qty'].sum())/no_of_days
-        }
-    }
+    print("df in plot forecast--",df)
+    plt.figure(figsize=(12, 6))
 
-    return comparison
+    # Plot historical data
+    plt.plot(df['date'], df['sales_qty'], label='Historical Data', marker='o')
+
+    # Plot SARIMAX forecast
+    plt.plot(sarimax_forecast_df.index, sarimax_forecast_df['predicted_mean'], label='SARIMAX Forecast', marker='o', markersize=5)
+    plt.fill_between(sarimax_forecast_df.index, sarimax_forecast_df.iloc[:, 0], sarimax_forecast_df.iloc[:, 1], color='k', alpha=0.1)
+
+    # Plot Exponential Smoothing forecast
+    # plt.plot(exp_smoothing_forecast.index, exp_smoothing_forecast, label='Exponential Smoothing Forecast', marker='o', markersize=5)
+    
+    plt.plot(arima_forecast.index, arima_forecast, label='ARIMA Forecast', marker='o', markersize=5)
 
 
-# def get_prev_data(data,from_date,to_date):
-#     data = data.loc[()]
+    plt.legend()
+    plt.title('Sales Quantity Forecast')
+    plt.xlabel('Date')
+    plt.ylabel('Sales Quantity')
+    plt.grid(True)
+    plt.show()
