@@ -7,6 +7,8 @@ import random
 import requests
 import seaborn as sns
 from django.http import JsonResponse
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+
 from .utils import fetch_data,fit_models,generate_forecasts,plot_forecasts,get_data_prev_month
 
 @api_view(['GET'])
@@ -73,6 +75,8 @@ def predict_sales_qty(request, item_code):
     # Fetch and process data
     df = fetch_data(item_code)
     
+    # print("df-----",df)
+    
     # Extract month from from_date and to_date
     from_month = pd.to_datetime(from_date).month
     to_month = pd.to_datetime(to_date).month
@@ -98,11 +102,72 @@ def predict_sales_qty(request, item_code):
     adjusted_forecast = max(adjusted_forecast, 0) 
     
     # Ensure forecast is non-negative
+    
+    
+    ## Sarima model
+    
+    # Parameters for SARIMAX model
+    
+    df['sales_diff'] = df['sales_qty'].diff().dropna()
+    df.set_index('date', inplace=True)
+
+    p, d, q = 1, 1, 1
+    P, D, Q, s = 1, 1, 1, 12
+
+    # Fit the SARIMA model
+    model = SARIMAX(df['sales_diff'], 
+                    order=(p, d, q), 
+                    seasonal_order=(P, D, Q, s))
+                    # enforce_stationarity=False,
+                    # enforce_invertibility=False)
+    sarima_results = model.fit(disp=False)
+
+    # Forecasting for the next year (e.g., May 2025)
+    forecast_steps = 12
+    forecast = sarima_results.get_forecast(steps=forecast_steps)
+    forecast_df = forecast.conf_int()
+    forecast_df['predicted_mean'] = forecast.predicted_mean
+
+    forecast_df['predicted_mean'] = forecast_df['predicted_mean'].apply(lambda x: max(x, 0))
+
+    # print("forecast_df------",forecast_df['forecast'])
+    
+    # print("df.index------",df.index)
+    last_date = pd.to_datetime(df.index[-1])
+    
+    forecast_index = pd.date_range(start=last_date + pd.DateOffset(months=1), periods=forecast_steps, freq='M')
+    forecast_df.index = forecast_index
+    # print("forecast_index-----",forecast_index)
+
+
+    # Create a date range for the forecast steps
+    
+
+    # Extract the forecast for the desired month (e.g., May 2025)
+    # forecast_date = pd.to_datetime(from_date)
+    # print("forecast_date--------",forecast_date)
+    
+    if to_date in forecast_df.index:
+        forecast_value = forecast_df.loc[to_date]['predicted_mean']
+        forecast_value = max(forecast_value, 0)
+        
+    else:
+        forecast_value = 0  # Default to 0 if the forecast date is not available
+ 
+        
+        # Ensure the forecast is non-negative
+    # Return the result
+    # response_data = {
+    #     "adjusted_forecast": forecast_value
+    # }
+    
+    # return JsonResponse(response_data) 
+
 
     # Return the result
     
-    print("adjusted_forecast------",adjusted_forecast)
-    return JsonResponse({"adjusted_forecast": adjusted_forecast}) 
+    # print("adjusted_forecast------",adjusted_forecast)
+    return JsonResponse({"forecast_seasonal_naive": adjusted_forecast,"sarimax_forecast":forecast_value}) 
 
     # Calculate the seasonal index for the specified month
     # monthly_sales = df[df['date'].dt.month == to_month]['sales_qty']

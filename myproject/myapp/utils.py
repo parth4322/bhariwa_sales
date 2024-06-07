@@ -49,7 +49,7 @@ def fetch_data(item_code):
     # Resample to monthly frequency and fill missing months with 0 sales
     df.set_index('date', inplace=True)
     df = df.resample('ME').sum().reset_index()
-    print(df)
+    # print(df)
 
     current_year = datetime.now().year
     cutoff_month = 5
@@ -57,7 +57,7 @@ def fetch_data(item_code):
     # Filter out data for the current year beyond April
     df = df[(df['date'].dt.year < current_year) | 
             ((df['date'].dt.year == current_year) & (df['date'].dt.month <= cutoff_month))]
-    print(df.shape)
+    # print(df.shape)
     
     # if 'item_code' in df.columns:
     #         df.drop(columns=['item_code'], inplace=True)
@@ -81,7 +81,7 @@ def fit_models(df):
         
         df.set_index('date', inplace=True)
         
-        print("df in fit models---",df)
+        # print("df in fit models---",df)
 
   
 

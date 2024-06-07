@@ -81,13 +81,13 @@ DATABASES = {
     # }
     'default': {
         'ENGINE': 'mssql',
-       # 'NAME': 'newmahalaxmi',
-        'NAME':'urc2',
+        'NAME': 'newmahalaxmi',
+        # 'NAME':'urc2',
         'USER': 'sa',
-        #'PASSWORD': 'TUBli1te056$$99',
-        'PASSWORD': 'bharuwa@retailer123',
-        #'HOST': '10.18.13.11',
-        'HOST': '10.10.19.40',
+        'PASSWORD': 'TUBli1te056$$99',
+        # 'PASSWORD': 'bharuwa@retailer123',
+        'HOST': '10.18.13.11',
+        # 'HOST': '10.10.19.40',
         'PORT': '1433',
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
