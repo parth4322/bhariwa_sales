@@ -158,3 +158,28 @@ def plot_forecasts(df, sarimax_forecast_df, arima_forecast  ):
     plt.ylabel('Sales Quantity')
     plt.grid(True)
     plt.show()
+
+
+def get_data_prev_month(from_date,to_date,data):
+    print(from_date[4:])
+
+    starting_year = data['date'].iloc[0].year
+    end_year = data['date'].iloc[-1].year
+    
+    from_month = from_date[5:7]
+    to_month = to_date[5:7]
+    
+    print(from_month,to_month,"------from_month,to_month")
+    
+    print(starting_year,end_year,'years-----')
+    yearly_data = []
+    while end_year>=starting_year:
+        newFromDate = str(starting_year) + from_date[4:]
+        newToDate = str(starting_year) + to_date[4:]
+        newData = data.loc[(data['date'] >= newFromDate) & (data['date'] <= newToDate)]
+        yearly_data.append(newData['sales_qty'].sum())
+        # yearly_data.append(newData['sales_qty'])
+        starting_year+=1
+    print(yearly_data)
+        
+    return yearly_data

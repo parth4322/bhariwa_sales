@@ -9,7 +9,9 @@ urlpatterns = [
 
     # path('plott_sales_qty/', views_06062024.plott_sales_qty, name='plott_sales_qty')
     
-    path('plot_sales_qty/<str:item_code>', views.plot_sales_qty, name='plot_sales_qty')
+    path('plot_sales_qty/<str:item_code>', views.plot_sales_qty, name='plot_sales_qty'),
+    path('predict_sales_qty/<str:item_code>', views.predict_sales_qty, name='predict_sales_qty')
+
     
 
 ]
