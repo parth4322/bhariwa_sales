@@ -31,7 +31,7 @@ def fetch_data(item_code):
         try:
             cursor.execute(query, [item_code])
             rows = cursor.fetchall()
-            print(rows)
+            # print(rows)
         except Exception as e:
             print(e)    
     if not rows:
@@ -68,6 +68,10 @@ def fetch_data(item_code):
         
     # df.set_index('date', inplace=True)
     df.fillna(0, inplace=True)
+    excel_filename = f'filtered_data_{item_code}.xlsx'
+    df.to_excel(excel_filename, index=False)
+
+
     return df
 
 

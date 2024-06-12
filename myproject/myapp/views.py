@@ -8,6 +8,7 @@ import requests
 import seaborn as sns
 from django.http import JsonResponse
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+import math
 
 from .utils import fetch_data,fit_models,generate_forecasts,plot_forecasts,get_data_prev_month
 
@@ -85,21 +86,35 @@ def predict_sales_qty(request, item_code):
     
     print("prevsale----",prevsale)
     print("data type of prev sale-----", type(prevsale))
-    
+    increase_trend = 0
+    decrease_trend = 0
     if prevsale[-2] > 0 and prevsale[-1] > 0:
-        trend = (prevsale[-1]  - prevsale[-2] ) / 2
-    else:
-        trend = 0
+        if prevsale[-1] > prevsale[-2]:
+            increase_trend = (prevsale[-1]  - prevsale[-2] ) / 2
+        else:
+        # trend = 0
+            decrease_trend = (prevsale[-2] - prevsale[-1])/2
 
     # Seasonal naive forecast for May 2025
-    if prevsale[-1] > 0:
-        seasonal_forecast = prevsale[-1]
-    else:
-        seasonal_forecast = 0
+    # if prevsale[-1] > 0:
+    #     seasonal_forecast = prevsale[-1]
+    # else:
+    #     seasonal_forecast = 0
 
     # Adjust forecast considering the trend
-    adjusted_forecast = seasonal_forecast + trend
-    adjusted_forecast = max(adjusted_forecast, 0) 
+    if increase_trend:
+        adjusted_forecast = prevsale[-1] + increase_trend
+    elif decrease_trend :
+        if  decrease_trend > 0:
+            adjusted_forecast = (prevsale[-1] - decrease_trend)
+            if adjusted_forecast > 0:
+                adjusted_forecast = adjusted_forecast
+            else:
+                adjusted_forecast = prevsale[-1]
+                    
+        
+        
+        
     
     # Ensure forecast is non-negative
     
