@@ -187,3 +187,27 @@ def get_data_prev_month(from_date,to_date,data):
     print(yearly_data)
         
     return yearly_data
+
+import itertools
+import pandas as pd
+import numpy as np
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from sklearn.metrics import mean_squared_error
+
+def sarimax_grid_search(data, param_grid):
+    best_score, best_cfg = float("inf"), None
+    for param in param_grid:
+        try:
+            model = SARIMAX(data, order=param[0], seasonal_order=param[1])
+            model_fit = model.fit(disp=False)
+            yhat = model_fit.predict(start=len(data), end=len(data)+11)
+            error = mean_squared_error(data[-12:], yhat)
+            if error < best_score:
+                best_score, best_cfg = error, param
+            print(f'SARIMAX{param} RMSE={error}')
+        except:
+            continue
+    print(f'Best SARIMAX{best_cfg} RMSE={best_score}')
+    return best_cfg
+
+
